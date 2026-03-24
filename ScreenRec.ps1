@@ -109,8 +109,8 @@ function Select-ScreenRect {
     )
 
     $form = New-Object Windows.Forms.Form
-    $form.WindowState = [System.Windows.WindowState]::Maximized
-    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $form.WindowState = "Maximized"
+    $form.FormBorderStyle = "None"
     $form.BackColor = [Drawing.Color]::Black
     $form.Opacity = 0.25
     $form.TopMost = $true
