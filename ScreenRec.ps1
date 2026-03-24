@@ -111,10 +111,10 @@ function Select-ScreenRect {
     $form = New-Object Windows.Forms.Form
     $form.WindowState = "Maximized"
     $form.FormBorderStyle = "None"
-    $form.BackColor = [Drawing.Color]::Black
+    $form.BackColor = [System.Drawing.Color]::Black
     $form.Opacity = 0.25
     $form.TopMost = $true
-    $form.Cursor = [Windows.Forms.Cursors]::Cross
+    $form.Cursor = [System.Windows.Forms.Cursors]::Cross
     #$form.DoubleBuffered = $true
 
     $form.Tag = @{
@@ -127,7 +127,7 @@ function Select-ScreenRect {
 
     if(!$fullScreen){
         $form.Add_MouseMove({
-            if ($_.Button -eq [Windows.Forms.MouseButtons]::Left -and $this.Tag.start -ne $null) {
+            if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $this.Tag.start -ne $null) {
                 $x = [Math]::Min($this.Tag.start.X, $_.X)
                 $y = [Math]::Min($this.Tag.start.Y, $_.Y)
                 $w = [Math]::Abs($_.X - $this.Tag.start.X)
@@ -170,11 +170,11 @@ function New-PropertyItem {
         $val
     )
     $pic = [Drawing.Bitmap]::new(1,1)
-    $stm = New-Object IO.MemoryStream
-    $pic.Save($stm, [Drawing.Imaging.ImageFormat]::Gif)
+    $stm = [System.IO.MemoryStream]::new()
+    $pic.Save($stm, [System.Drawing.Imaging.ImageFormat]::Gif)
     $pic.Dispose()
     $stm.Position = 0
-    $pic = [Drawing.Image]::FromStream($stm)
+    $pic = [System.Drawing.Image]::FromStream($stm)
     $p = $pic.PropertyItems[0]
     $p.Id = $id
     $p.Type = $type
@@ -196,9 +196,9 @@ function Record-ScreenGIF{
     $rect = Select-ScreenRect -fullScreen:$fullScreen
     if($rect.Width -le 0 -or $rect.Height -le 0){return}
 
-    $codec = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | %{ $_.MimeType -eq "image/gif" }
-    $encoder = [Drawing.Imaging.Encoder]::SaveFlag
-    $params = [Drawing.Imaging.EncoderParameters]::new(1)
+    $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | ?{ $_.MimeType -eq "image/gif" } | Select -First 1
+    $encoder = [System.Drawing.Imaging.Encoder]::SaveFlag
+    $params = [System.Drawing.Imaging.EncoderParameters]::new(1)
 
     $tempFolder = Join-Path $env:TEMP ("rec_" + [guid]::NewGuid())
     [void](New-Item $tempFolder -ItemType Directory)
@@ -211,24 +211,26 @@ function Record-ScreenGIF{
 
     try{
         for($i = 0; $i -lt [System.Math]::Floor(($durationMs/$intervalMs)) -or $durationMs -eq 0; $i++){
-            $bmp = [Drawing.Bitmap]::new($rect.Width, $rect.Height)
-            $gfx = [Drawing.Graphics]::FromImage($bmp)
+            $bmp = [System.Drawing.Bitmap]::new($rect.Width, $rect.Height)
+            $gfx = [System.Drawing.Graphics]::FromImage($bmp)
 
             $gfx.CopyFromScreen($rect.X, $rect.Y, 0, 0, $bmp.Size)
 
             $file = Join-Path $tempFolder ("img_{0:D6}.png" -f $i)
-            $bmp.Save($file, [Drawing.Imaging.ImageFormat]::Gif)
+            $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::png)
 
             $gfx.Dispose()
             $bmp.Dispose()
 
             [System.Threading.Thread]::Sleep($intervalMs)
         }
+    }catch{
+        Write-Host -ForegroundColor Cyan $error[0]
     }finally{
         Write-Host "`nEncoding GIF..."
 
         $files = Get-ChildItem $tempFolder -Filter *.png | Sort-Object Name
-        $images = $files | %{[Drawing.Image]::FromFile($_.FullName)}
+        $images = $files | %{[System.Drawing.Image]::FromFile($_.FullName)}
         
         $delay = [Math]::Max([int]($intervalMs / 10),1)
         $delayBytes = [byte[]]::new((4 * $images.Count))
@@ -242,17 +244,16 @@ function Record-ScreenGIF{
         $images[0].SetPropertyItem($propDelay)
         $images[0].SetPropertyItem($propLoop)
 
-        $params.Param[0] = [Drawing.Imaging.EncoderParameter]::new($encoder, [long][Drawing.Imaging.EncoderValue]::MultiFrame)
+        $params.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new($encoder, [long][System.Drawing.Imaging.EncoderValue]::MultiFrame)
         $images[0].Save($outputFile, $codec, $params)
 
-        for($i = 0; $i -lt $images.Count; $i++){
-            $params.Param[0] = [Drawing.Imaging.EncoderParameter]::new($encoder,[long][Drawing.Imaging.EncoderValue]::FrameDimensionTime)
+        for($i = 1; $i -lt $images.Count; $i++){
+            $params.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new($encoder,[long][System.Drawing.Imaging.EncoderValue]::FrameDimensionTime)
             $images[0].SaveAdd($images[$i], $params)
         }
-
-        $params.Param[0] = [Drawing.Imaging.EncoderParameter]::new($encoder,[long][Drawing.Imaging.EncoderValue]::Flush)
+        $params.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new($encoder,[long][System.Drawing.Imaging.EncoderValue]::Flush)
         $images[0].SaveAdd($params)
-
+        
         foreach($img in $images){$img.Dispose()}
 
         Remove-Item $tempFolder -Recurse -Force
@@ -393,6 +394,8 @@ function Record-ScreenAVI{
         
         $g.Dispose()
         $bmp.Dispose()
+    }catch{
+        Write-Host -ForegroundColor Cyan $error[0]
     }finally{
         if($compressed){[void][AviNative]::AVIStreamRelease($pCompressed)}
         [void][AviNative]::AVIStreamRelease($pStream)
