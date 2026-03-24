@@ -2,7 +2,7 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
-public static class AviNative
+public static class NativeAVI
 {
     [DllImport("avifil32.dll")]
     public static extern void AVIFileInit();
@@ -288,17 +288,17 @@ function Record-ScreenAVI{
 
     $frames = [math]::Floor($DurationMs / $IntervalMs)
 
-    [AviNative]::AVIFileInit()
+    [NativeAVI]::AVIFileInit()
 
     $pfile = [IntPtr]::Zero
-    [void][AviNative]::AVIFileOpen(
+    [void][NativeAVI]::AVIFileOpen(
         [ref]$pfile,
         $outputFile,
-        [AviNative]::OF_CREATE -bor [AviNative]::OF_WRITE,
+        [NativeAVI]::OF_CREATE -bor [NativeAVI]::OF_WRITE,
         [IntPtr]::Zero
     )
 
-    $streamInfo = [AviNative+AVISTREAMINFO]::new()
+    $streamInfo = [NativeAVI+AVISTREAMINFO]::new()
     $streamInfo.fccType = 0x73646976  # 'vids' backwards as bytes
     $streamInfo.dwScale = 1
     $streamInfo.dwRate = 1000 / $intervalMs
@@ -308,7 +308,7 @@ function Record-ScreenAVI{
     $streamInfo.szName = "ScreenCapture"
 
     $pStream = [IntPtr]::Zero
-    $res = [AviNative]::AVIFileCreateStream($pfile, [ref]$pStream, [ref]$streamInfo)
+    $res = [NativeAVI]::AVIFileCreateStream($pfile, [ref]$pStream, [ref]$streamInfo)
 
     if($res -ne 0){
         throw "Failed to create the AVI stream. Err code: $res"
@@ -339,8 +339,8 @@ function Record-ScreenAVI{
 
     $stride = (($Width * 3 + 3) -band 4)
 
-    $bmpHeader = [AviNative+BITMAPINFOHEADER]::new()
-    $bmpHeader.biSize = [Runtime.InteropServices.Marshal]::SizeOf($bmpHeader)
+    $bmpHeader = [NativeAVI+BITMAPINFOHEADER]::new()
+    $bmpHeader.biSize = [System.Runtime.InteropServices.Marshal]::SizeOf($bmpHeader)
     $bmpHeader.biWidth = $Width
     $bmpHeader.biHeight = $Height
     $bmpHeader.biPlanes = 1
@@ -348,11 +348,11 @@ function Record-ScreenAVI{
     $bmpHeader.biCompression = 0
     $bmpHeader.biSizeImage = $stride * $Height
 
-    [void][AviNative]::AVIStreamSetFormat(
+    [void][NativeAVI]::AVIStreamSetFormat(
         $(if($compressed){$pCompressed}else{$pStream}),
         0,
         [ref]$bmpHeader,
-        [Runtime.InteropServices.Marshal]::SizeOf($bmpHeader)
+        [System.Runtime.InteropServices.Marshal]::SizeOf($bmpHeader)
     )
 
     if($durationMs -eq 0){
@@ -362,27 +362,27 @@ function Record-ScreenAVI{
     }
 
     try{
-        $bmp = [System.Drawing.Bitmap]::new($Width, $Height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
-        $g = [Drawing.Graphics]::FromImage($bmp)
+        $bmp = [System.Drawing.Bitmap]::new($Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
         $captureRect = [System.Drawing.Rectangle]::new(0, 0, $Width, $Height)
-        for($i = 0; $i -lt $frames; $i++){
-            $g.CopyFromScreen($rect.Location, [Drawing.Point]::Empty, $rect.Size)
+        for($i = 0; $i -lt $frames -or $durationMs -eq 0; $i++){
+            $g.CopyFromScreen($rect.Location, [System.Drawing.Point]::Empty, $rect.Size)
 
             $bmp.RotateFlip([Drawing.RotateFlipType]::RotateNoneFlipY) # it's bottom up for some reason
 
             $bmpData = $bmp.LockBits(
                 $captureRect,
-                [Drawing.Imaging.ImageLockMode]::ReadOnly,
-                [Drawing.Imaging.PixelFormat]::Format24bppRgb
+                [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+                [System.Drawing.Imaging.PixelFormat]::Format24bppRgb
             )
 
-            [void][AviNative]::AVIStreamWrite(
+            [void][NativeAVI]::AVIStreamWrite(
                 $(if($compressed){$pCompressed}else{$pStream}),
                 $i,
                 1,
                 $bmpData.Scan0,
                 ($stride * $Height),
-                [AviNative]::AVIIF_KEYFRAME,
+                [NativeAVI]::AVIIF_KEYFRAME,
                 [IntPtr]::Zero,
                 [IntPtr]::Zero
             )
@@ -397,11 +397,11 @@ function Record-ScreenAVI{
     }catch{
         Write-Host -ForegroundColor Cyan $error[0]
     }finally{
-        if($compressed){[void][AviNative]::AVIStreamRelease($pCompressed)}
-        [void][AviNative]::AVIStreamRelease($pStream)
-        [void][AviNative]::AVIFileRelease($pfile)
-        [AviNative]::AVIFileExit()
-    }
+        if($compressed){[void][NativeAVI]::AVIStreamRelease($pCompressed)}
+        [void][NativeAVI]::AVIStreamRelease($pStream)
+        [void][NativeAVI]::AVIFileRelease($pfile)
+        [NativeAVI]::AVIFileExit()
 
-    Write-Host "AVI recording finished! Saved to $outputFile"
+        Write-Host "AVI recording finished! Saved to $outputFile"
+    }
 }
